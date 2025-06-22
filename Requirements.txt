@@ -1,0 +1,10 @@
+streamlit
+pandas
+matplotlib
+seaborn
+statsmodels
+openai
+python-dotenv
+SpeechRecognition
+gTTS
+streamlit_chat
