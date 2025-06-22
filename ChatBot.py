@@ -16,7 +16,7 @@ from streamlit_chat import message # type: ignore
 
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("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"))
+client = OpenAI(api_key=os.getenv("sk-HZrDDpstXzfJIs_eh0hweb1VZOC9X0PvJ8FWQdrLn9MvUDF9ITFHYl39VuizfECavRuKcohNkTT3BlbkFJ5YvUir-KcEE89Bph-sd2AhRSAN7JyrEZarBfso4TexjqZxquBCGOHw7nK0PBY3n569WnItnwsA"))
 DEFAULT_MODEL = "gpt-4o"
 
 GREETINGS = ['hi', 'hello', 'hey', 'hola', 'howdy', 'greetings']
