@@ -1,4 +1,4 @@
-import streamlit as st
+from flask import Flask, request, jsonify, render_template
 import pandas as pd
 import random
 import speech_recognition as sr
@@ -9,51 +9,48 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import matplotlib.pyplot as plt
 import seaborn as sns
+import base64
 from openai import OpenAI
+from dotenv import load_dotenv
 import re
-from dotenv import load_dotenv # type: ignore
-from streamlit_chat import message # type: ignore
 
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("sk-HZrDDpstXzfJIs_eh0hweb1VZOC9X0PvJ8FWQdrLn9MvUDF9ITFHYl39VuizfECavRuKcohNkTT3BlbkFJ5YvUir-KcEE89Bph-sd2AhRSAN7JyrEZarBfso4TexjqZxquBCGOHw7nK0PBY3n569WnItnwsA"))
+client = OpenAI(api_key=os.getenv("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"))  # Use your .env file
 DEFAULT_MODEL = "gpt-4o"
+
+app = Flask(_name_)
+app.config['UPLOAD_FOLDER'] = 'uploads'
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+data = None
+chat_history = []
 
 GREETINGS = ['hi', 'hello', 'hey', 'hola', 'howdy', 'greetings']
 WELL_BEING_QUESTIONS = ['how are you', 'how are you doing', 'how do you feel', "what's up"]
 
 econometrics_kb = {
-    "ols": "*Régression Linéaire Multiple (OLS)* :\n\nLa régression linéaire multiple est une méthode statistique utilisée pour modéliser la relation entre une variable dépendante continue et plusieurs variables indépendantes. Elle permet d’évaluer l’effet individuel de chaque variable explicative.\n\n*Utilisations :* Prédiction, évaluation d’impact.\n\n*Hypothèses :* Linéarité, homoscédasticité, indépendance des erreurs, normalité des résidus, absence de multicolinéarité.\n\n*Résultats clés :* Coefficients, R², R² ajusté, F-statistique, p-values, Durbin-Watson.",
-    "heteroscedasticity": "L’hétéroscédasticité signifie que la variance des erreurs n’est pas constante. Cela viole une des hypothèses de base du modèle OLS et peut conduire à des inférences statistiques incorrectes.",
-    "autocorrelation": "L’autocorrélation fait référence à la corrélation entre les erreurs d’un modèle à différents points dans le temps. Cela est courant dans les données de séries temporelles."
+    "ols": "Régression linéaire multiple...",
+    "heteroscedasticity": "L’hétéroscédasticité signifie...",
+    "autocorrelation": "L’autocorrélation fait référence..."
 }
 
 def translate(key, lang):
     translation_dict = {
         "greeting_response": {
-            "en": ["Hello!", "Hi there!", "Hey!", "Howdy!"],
-            "fr": ["Bonjour !", "Salut !", "Coucou !", "Salut à toi !"],
-            "zh": ["你好！", "嗨！", "嘿！", "您好！"]
+            "en": ["Hello!", "Hi there!"],
+            "fr": ["Bonjour !", "Salut !"],
+            "zh": ["你好！", "嗨！"]
         },
         "wellbeing_response": {
-            "en": ["I'm doing well, thank you!", "I'm feeling great today!", "I'm a chatbot, I don't have feelings, but thank you for asking!"],
-            "fr": ["Je vais bien, merci !", "Je me sens en pleine forme aujourd'hui !", "Je suis un chatbot, je n'ai pas de sentiments, mais merci de demander !"],
-            "zh": ["我很好，谢谢你！", "我今天感觉很好！", "我是一个聊天机器人，没有感情，但谢谢你的关心！"]
+            "en": ["I'm doing well, thank you!"],
+            "fr": ["Je vais bien, merci !"],
+            "zh": ["我很好，谢谢你！"]
         },
         "unknown_question": {
-            "en": "🤔 I didn't understand. Can you specify a known model or ask clearly?",
-            "fr": "🤔 Je n'ai pas compris. Pouvez-vous préciser un modèle connu ou poser une question plus claire ?",
-            "zh": "🤔 我不太明白。你能指定一个已知的模型或更清楚地提问吗？"
-        },
-        "upload_success": {
-            "en": "Data uploaded successfully!",
-            "fr": "Données téléchargées avec succès !",
-            "zh": "数据上传成功！"
-        },
-        "upload_fail": {
-            "en": "Could not load data:",
-            "fr": "Impossible de charger les données :",
-            "zh": "无法加载数据："
+            "en": "🤔 I didn't understand.",
+            "fr": "🤔 Je n'ai pas compris.",
+            "zh": "🤔 我不太明白。"
         }
     }
     return translation_dict.get(key, {}).get(lang, key)
@@ -65,22 +62,18 @@ def speak(text, lang="en"):
             tts.save(fp.name)
             os.system(f"start {fp.name}")
     except Exception as e:
-        st.warning(f"Text-to-speech failed: {e}")
+        print("Text-to-speech failed:", e)
 
 def listen():
     try:
         r = sr.Recognizer()
         with sr.Microphone() as source:
-            st.info("Listening... Speak now.")
+            print("Listening...")
             audio = r.listen(source)
             text = r.recognize_google(audio)
             return text.lower()
-    except sr.UnknownValueError:
-        return "Sorry, I could not understand your voice."
-    except sr.RequestError:
-        return "Error with speech service."
     except Exception as e:
-        return f"Microphone error: {e}"
+        return str(e)
 
 def run_regression(df, y_var, x_vars):
     try:
@@ -88,39 +81,22 @@ def run_regression(df, y_var, x_vars):
         model = smf.ols(formula=formula, data=df).fit()
         return model
     except Exception as e:
-        return f"Erreur dans la régression : {e}"
-
-def show_model_diagnostics(model):
-    st.subheader("📈 Résumé du Modèle")
-    summary_str = str(model.summary())
-    st.text(summary_str)
-    st.download_button("⬇ Télécharger le résumé", data=summary_str, file_name="summary_model.txt", mime='text/plain')
-    st.markdown("---")
-    st.subheader("📊 Analyse de la robustesse")
-    st.markdown(f"*R² :* {model.rsquared:.4f}")
-    st.markdown(f"*R² ajusté :* {model.rsquared_adj:.4f}")
-    st.markdown(f"*Statistique F :* {model.fvalue:.4f} (p = {model.f_pvalue:.4g})")
-    st.markdown(f"*Durbin-Watson :* {sm.stats.durbin_watson(model.resid):.4f}")
-    fig1, ax1 = plt.subplots()
-    sns.histplot(model.resid, kde=True, ax=ax1)
-    st.pyplot(fig1)
-    fig2, ax2 = plt.subplots()
-    sns.residplot(x=model.fittedvalues, y=model.resid, lowess=True, ax=ax2)
-    st.pyplot(fig2)
+        return str(e)
 
 def get_llm_response(prompt):
     try:
         response = client.chat.completions.create(
             model=DEFAULT_MODEL,
-            messages=[{"role": "system", "content": "You are an expert assistant who answers questions about econometrics, public figures, and general knowledge using your expertise."}, {"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": "You are an expert in econometrics."},
+                {"role": "user", "content": prompt}
+            ],
             temperature=0.7,
             max_tokens=500
         )
         return response.choices[0].message.content
     except Exception as e:
-        if "insufficient_quota" in str(e).lower() or "429" in str(e):
-            return "⚠️ OpenAI quota exceeded. Using local fallback response."
-        return f"LLM error: {e}"
+        return "LLM Error: " + str(e)
 
 def get_fallback_response(user_input, lang_code):
     cleaned_input = user_input.lower()
@@ -141,142 +117,70 @@ def parse_regression_input(text):
         return y_var, x_vars
     return None, None
 
-def main():
-    st.markdown("""
-        <style>
-            body {
-                background-color: #e6dccc;
-                color: #2e1d0f;
-            }
-            .stApp {
-                background-color: #f1e6d4;
-            }
-            .block-container {
-                padding-top: 2rem;
-            }
-            h1, h2, h3, h4 {
-                color: #3b2414;
-            }
-            .css-1d391kg, .css-1v0mbdj, .st-c9 {
-                background-color: #d0bfa5 !important;
-                border-radius: 12px;
-                padding: 1em;
-                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-            }
-            .stButton>button {
-                background-color: #5b3b1e;
-                color: white;
-                border: none;
-                padding: 0.6em 1.2em;
-                border-radius: 8px;
-                font-weight: bold;
-            }
-            .stButton>button:hover {
-                background-color: #472e17;
-            }
-            .chat-user {
-                background-color: #b89676;
-                color: #2e1d0f;
-                padding: 10px;
-                border-radius: 10px;
-                margin: 8px 0;
-                text-align: right;
-            }
-            .chat-assistant {
-                background-color: #f5e8d7;
-                color: #2e1d0f;
-                padding: 10px;
-                border-radius: 10px;
-                margin: 8px 0;
-                text-align: left;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-    st.image("wmremove-transformed-removebg-preview.png", width=120)
-    st.title("📈 Assistant Économétrique Intelligent")
-    st.markdown("""
-        <h4 style='text-align: center; color: #5b3b1e;'>Welcome to ZO Analytics 🤎</h4>
-        <p style='text-align: center; color: #3b2414;'>Created with passion by <strong>Zainab Dribigi</strong> & <strong>Oussama Sabik</strong></p>
-    """, unsafe_allow_html=True)
-    language = st.selectbox("🌐 Choisissez votre langue", ["French", "English", "Chinese"])
-    lang_map = {"English": "en", "French": "fr", "Chinese": "zh"}
-    lang_code = lang_map.get(language, "en")
-    tabs = st.tabs(["📤 Données", "📊 Régression", "💬 Chat"])
+@app.route('/')
+def index():
+    return render_template("index.html")
 
-    with tabs[0]:
-        uploaded_file = st.file_uploader("Importez un fichier CSV, Excel ou TXT", type=["csv", "xlsx", "txt"])
-        global data
-        data = None
-        if uploaded_file:
-            try:
-                if uploaded_file.name.endswith(".csv"):
-                    data = pd.read_csv(uploaded_file)
-                elif uploaded_file.name.endswith(".xlsx"):
-                    data = pd.read_excel(uploaded_file)
-                elif uploaded_file.name.endswith(".txt"):
-                    data = pd.read_csv(uploaded_file, delimiter="\t")
-                st.success(translate("upload_success", lang_code))
-                st.dataframe(data)
-            except Exception as e:
-                st.error(f"{translate('upload_fail', lang_code)} {e}")
+@app.route('/upload', methods=['POST'])
+def upload():
+    global data
+    file = request.files['file']
+    if file:
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(filepath)
+        if file.filename.endswith(".csv"):
+            data = pd.read_csv(filepath)
+        elif file.filename.endswith(".xlsx"):
+            data = pd.read_excel(filepath)
+        elif file.filename.endswith(".txt"):
+            data = pd.read_csv(filepath, delimiter="\t")
+        return jsonify({"columns": list(data.columns)})
+    return "No file uploaded", 400
 
-    with tabs[1]:
-        st.header("⚙ Régression")
-        if data is not None:
-            numeric_cols = data.select_dtypes(include='number').columns
-            y_var = st.selectbox("Choisissez la variable dépendante (Y)", numeric_cols)
-            x_vars = st.multiselect("Choisissez les variables explicatives (X)", [col for col in numeric_cols if col != y_var])
-            if st.button("Lancer la régression"):
-                model = run_regression(data, y_var, x_vars)
-                if isinstance(model, str):
-                    st.error(model)
-                else:
-                    show_model_diagnostics(model)
-        else:
-            st.info("Veuillez d'abord importer un fichier de données dans l'onglet Données.")
+@app.route('/regression', methods=['POST'])
+def regression():
+    global data
+    if data is None:
+        return "No data available", 400
 
-    with tabs[2]:
-        if st.button("🆕 New Chat"):
-            st.session_state.chat_history = []
-            st.rerun()
-        st.header("💬 Discussion Économétrique")
-        input_method = st.radio("Méthode d'entrée", ["Texte", "Voix"])
-        user_input = ""
-        if input_method == "Texte":
-            user_input = st.text_input("💬 Tapez votre message")
-        elif input_method == "Voix":
-            if st.button("🎙 Parler"):
-                user_input = listen()
-                st.write("🗣 Vous avez dit :", user_input)
+    req = request.json
+    y = req.get("y")
+    x = req.get("x", [])
+    model = run_regression(data, y, x)
+    if isinstance(model, str):
+        return jsonify({"error": model})
 
-        if user_input:
-            if 'chat_history' not in st.session_state:
-                st.session_state.chat_history = []
+    summary_text = model.summary().as_text()
+    return jsonify({
+        "summary": summary_text,
+        "r2": model.rsquared,
+        "r2_adj": model.rsquared_adj,
+        "f_stat": model.fvalue,
+        "f_pvalue": model.f_pvalue
+    })
 
-            y_var, x_vars = parse_regression_input(user_input)
-            if y_var and x_vars and data is not None:
-                if y_var in data.columns and all(x in data.columns for x in x_vars):
-                    model = run_regression(data, y_var, x_vars)
-                    if not isinstance(model, str):
-                        st.session_state.chat_history.append({"role": "user", "content": user_input})
-                        st.markdown(f"### 📊 Régression automatique lancée\n\n**Y :** {y_var} — **X :** {', '.join(x_vars)}")
-                        show_model_diagnostics(model)
-                        return
+@app.route('/chat', methods=['POST'])
+def chat():
+    global chat_history
+    req = request.json
+    message = req.get("message")
+    lang = req.get("lang", "en")
+    y_var, x_vars = parse_regression_input(message)
 
-            st.session_state.chat_history.append({"role": "user", "content": user_input})
-            chat_prompt = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.chat_history])
-            response = get_llm_response(chat_prompt)
-            if "⚠️ OpenAI quota exceeded" in response:
-                response = get_fallback_response(user_input, lang_code)
-            st.session_state.chat_history.append({"role": "assistant", "content": response})
+    if y_var and x_vars and data is not None:
+        if y_var in data.columns and all(x in data.columns for x in x_vars):
+            model = run_regression(data, y_var, x_vars)
+            if not isinstance(model, str):
+                chat_history.append({"role": "user", "content": message})
+                return jsonify({"response": f"Regression done with Y={y_var} and X={x_vars}."})
 
-        if 'chat_history' in st.session_state:
-            for i, msg in enumerate(st.session_state.chat_history):
-                is_user = msg["role"] == "user"
-                message(msg["content"], is_user=is_user, key=str(i))
-st.markdown("""
-        <hr style='border-top: 1px solid #ccbbaa;'>
-        <p style='text-align: center; font-size: 13px; color: #7a5b3e;'>© 2025 - All rights reserved by Zainab Dribigi & Oussama Sabik</p>
-    """, unsafe_allow_html=True)
-if __name__ == "__main__":
-    main()
+    chat_history.append({"role": "user", "content": message})
+    chat_prompt = "\n".join([f"{m['role']}: {m['content']}" for m in chat_history])
+    reply = get_llm_response(chat_prompt)
+    if "LLM Error" in reply:
+        reply = get_fallback_response(message, lang)
+    chat_history.append({"role": "assistant", "content": reply})
+    return jsonify({"response": reply})
+
+if _name_ == '_main_':
+    app.run(debug=True)
