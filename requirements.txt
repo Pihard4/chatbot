@@ -1,10 +1,8 @@
-streamlit
+Flask
+openai
 pandas
+gTTS
+SpeechRecognition
 matplotlib
 seaborn
-statsmodels
-openai
 python-dotenv
-SpeechRecognition
-gTTS
-streamlit_chat
