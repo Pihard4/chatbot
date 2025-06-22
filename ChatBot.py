@@ -192,7 +192,7 @@ def main():
             }
         </style>
     """, unsafe_allow_html=True)
-    st.image(r"C:\Users\HP\Downloads\wmremove-transformed-removebg-preview.png", width=120)
+    st.image("wmremove-transformed-removebg-preview.png", width=120)
     st.title("📈 Assistant Économétrique Intelligent")
     st.markdown("""
         <h4 style='text-align: center; color: #5b3b1e;'>Welcome to ZO Analytics 🤎</h4>
